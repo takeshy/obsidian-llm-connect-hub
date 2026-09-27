@@ -1,0 +1,77 @@
+name: Release draft
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Validate version files
+        id: version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const pkg = require('./package.json');
+          const manifest = require('./manifest.json');
+          const versions = require('./versions.json');
+          if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) throw new Error('package.json version must be semver');
+          if (manifest.version !== pkg.version) throw new Error('manifest.json version does not match package.json');
+          if (versions[pkg.version] !== manifest.minAppVersion) throw new Error('versions.json is missing this version or minAppVersion does not match');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${pkg.version}\n`);
+          NODE
+      - name: Check for an existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          releases=$(gh release list --limit 1000 --json tagName)
+          if jq -e --arg version "$VERSION" 'any(.[]; .tagName == $version)' <<< "$releases" > /dev/null; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install dependencies
+        if: steps.existing.outputs.exists == 'false'
+        run: npm ci
+      - name: Test
+        if: steps.existing.outputs.exists == 'false'
+        run: npm test
+      - name: Build
+        if: steps.existing.outputs.exists == 'false'
+        run: npm run build
+      - name: Attest release assets
+        if: steps.existing.outputs.exists == 'false'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+      - name: Create draft release
+        if: steps.existing.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            main.js
+            manifest.json

@@ -1,0 +1,66 @@
+import { McpHttpClient } from "obsidian-llm-hub-common/mcp";
+import type { ConnectBackend, KakerattaSettings, PersonaProfile } from "./contract";
+import { pollKakeratta } from "./kakerattaWorker";
+
+export async function withKakeratta<T>(config: KakerattaSettings, work: (call: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>) => Promise<T>): Promise<T> {
+  const url = new URL(config.url);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) {
+    throw new Error("Use HTTPS, or HTTP on localhost");
+  }
+  const client = new McpHttpClient({ name: "kakeratta", transport: "http", url: config.url, headers: config.headers, enabled: true });
+  try {
+    await client.initialize();
+    return await work(async (name, args) => {
+      // Enabling this dedicated connection authorizes exactly this protocol.
+      if (!["list_personas", "list_asks", "claim_ask", "read_for_ask", "submit_answer", "release_ask"].includes(name)) throw new Error("Unsupported tool");
+      const result = await client.callToolRaw(name, args, true);
+      if (result.isError) throw new Error("Kakeratta rejected the request");
+      if (result.structuredContent) return result.structuredContent;
+      return JSON.parse(result.content.filter(c => c.type === "text").map(c => c.text ?? "").join("\n")) as Record<string, unknown>;
+    });
+  } finally { await client.close().catch(() => undefined); }
+}
+
+export function resolvePersonaProfile(config: KakerattaSettings, context: unknown): PersonaProfile {
+  const id = (context as { persona?: { id?: unknown } })?.persona?.id;
+  const profile = typeof id === "string" && Object.hasOwn(config.personas, id) ? config.personas[id] : undefined;
+  return { model: profile?.model || config.model, vaultFolders: profile?.vaultFolders ?? [], ragSetting: profile?.ragSetting ?? null, skillPaths: profile?.skillPaths ?? [] };
+}
+
+export class KakerattaService {
+  private controller = new AbortController();
+  private timer?: number;
+  private running?: Promise<void>;
+  constructor(private config: KakerattaSettings, private backend: ConnectBackend, private status: (message: string) => void) {}
+  start(): void {
+    this.timer = window.setInterval(() => this.tick(), 60_000);
+    this.tick();
+  }
+  stop(): void {
+    this.controller.abort();
+    if (this.timer !== undefined) window.clearInterval(this.timer);
+    // In-flight HTTP may not be cancellable; the aborted signal prevents further turns.
+  }
+  private tick(): void {
+    if (this.running || this.controller.signal.aborted) return;
+    this.running = withKakeratta(this.config, async call => {
+      await pollKakeratta(call, async (messages, systemPrompt, signal, context) => {
+        const profile = resolvePersonaProfile(this.config, context);
+        const selectedModel = profile.model || this.backend.getDefaultModel();
+        if ((["antigravity-cli", "claude-cli", "codex-cli"].includes(selectedModel) || selectedModel.startsWith("local-llm:")) &&
+            profile.vaultFolders.length === 0 && !profile.ragSetting && profile.skillPaths.length === 0) {
+          return this.backend.generateText({ model: selectedModel, messages, systemPrompt, signal });
+        }
+        const result = await this.backend.generate({
+          conversation: { messages, lastActivity: Date.now(), model: selectedModel, ragSetting: profile.ragSetting, webSearch: false, activeSkillPaths: profile.skillPaths },
+          model: selectedModel, systemPrompt, signal, vaultFolders: profile.vaultFolders,
+          ragQuery: (context as { trigger?: { text?: string } })?.trigger?.text ?? "",
+        });
+        return result.answer.content;
+      }, this.controller.signal);
+      if (!this.controller.signal.aborted) this.status("Kakeratta: connected");
+    }).catch(() => {
+      if (!this.controller.signal.aborted) this.status("Kakeratta: connection failed; retrying in one minute");
+    }).finally(() => { this.running = undefined; });
+  }
+}

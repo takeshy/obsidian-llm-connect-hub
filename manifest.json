@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-llm-connect-hub",
+  "name": "LLM Connect Hub",
+  "version": "0.1.0",
+  "minAppVersion": "1.13.0",
+  "description": "Connect Discord and Kakeratta to models, RAG, and skills provided by LLM Hub.",
+  "author": "takeshy",
+  "isDesktopOnly": true
+}
