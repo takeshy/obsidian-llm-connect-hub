@@ -84,6 +84,7 @@ You can configure DMs, mentions, allowed channels/users, the default model, the 
 | Answer model | Model used for answers. Choose one that follows JSON output instructions. |
 | Vault folders | Turn on **Read the entire vault** (including root notes and future folders), or list Vault-relative folders one per line. If off and empty, Vault tools are disabled. |
 | RAG | Index to search. Independent of the Vault folder list. |
+| Web Search | Use native Web Search with supported Gemini or official OpenAI, Anthropic, or xAI API models. Off by default. |
 | Skills | Use **Add skill** to search and add the same folder skills as chat. Remove them individually. |
 
 Use **Add persona override** to search for a persona and customize a copy of the defaults. Removing an override restores the defaults.

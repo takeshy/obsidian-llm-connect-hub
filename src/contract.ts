@@ -46,6 +46,8 @@ export interface PersonaProfile {
   vaultFolders: string[];
   allVault?: boolean;
   ragSetting: string | null;
+  /** Optional so profiles saved by earlier versions keep Web Search off. */
+  webSearch?: boolean;
   skillPaths: string[];
 }
 export interface KakerattaSettings {

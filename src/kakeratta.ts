@@ -24,7 +24,15 @@ export async function withKakeratta<T>(config: KakerattaSettings, work: (call: (
 export function resolvePersonaProfile(config: KakerattaSettings, context: unknown): PersonaProfile {
   const id = (context as { persona?: { id?: unknown } })?.persona?.id;
   const profile = (typeof id === "string" && Object.hasOwn(config.personas, id) ? config.personas[id] : undefined) ?? config.defaultProfile;
-  return { model: profile?.model || (config.defaultProfile?.model ?? config.model), vaultFolders: profile?.vaultFolders ?? [], ragSetting: profile?.ragSetting ?? null, skillPaths: profile?.skillPaths ?? [], ...(profile?.allVault ? { allVault: true } : {}) };
+  const webSearch = profile?.webSearch ?? config.defaultProfile?.webSearch;
+  return {
+    model: profile?.model || (config.defaultProfile?.model ?? config.model),
+    vaultFolders: profile?.vaultFolders ?? [],
+    ragSetting: profile?.ragSetting ?? null,
+    skillPaths: profile?.skillPaths ?? [],
+    ...(profile?.allVault ? { allVault: true } : {}),
+    ...(webSearch !== undefined ? { webSearch } : {}),
+  };
 }
 
 /** Expand at answer time so newly created root notes and folders are included. */
@@ -64,12 +72,13 @@ export class KakerattaService {
       const summary = await pollKakeratta(call, async (messages, systemPrompt, signal, context) => {
         const profile = resolvePersonaProfile(this.config, context);
         const selectedModel = profile.model || this.backend.getDefaultModel();
+        const webSearch = !!profile.webSearch && this.backend.supportsWebSearch(selectedModel);
         if ((["antigravity-cli", "claude-cli", "codex-cli"].includes(selectedModel) || selectedModel.startsWith("local-llm:")) &&
-            !profile.allVault && profile.vaultFolders.length === 0 && !profile.ragSetting && profile.skillPaths.length === 0) {
+            !profile.allVault && profile.vaultFolders.length === 0 && !profile.ragSetting && !webSearch && profile.skillPaths.length === 0) {
           return this.backend.generateText({ model: selectedModel, messages, systemPrompt, signal });
         }
         const result = await this.backend.generate({
-          conversation: { messages, lastActivity: Date.now(), model: selectedModel, ragSetting: profile.ragSetting, webSearch: false, activeSkillPaths: profile.skillPaths },
+          conversation: { messages, lastActivity: Date.now(), model: selectedModel, ragSetting: profile.ragSetting, webSearch, activeSkillPaths: profile.skillPaths },
           model: selectedModel, systemPrompt, signal, vaultFolders: resolveVaultFolders(profile, this.rootPaths),
           ragQuery: (context as { trigger?: { text?: string } })?.trigger?.text ?? "",
         });
