@@ -23,6 +23,8 @@ export class ConnectSettingsTab extends PluginSettingTab {
   private renderSettings(el: HTMLElement): void {
     const l = getLanguage() === "ja" ? labels.ja : labels.en;
     el.empty();
+    // This definition renders a whole page, not a single horizontal setting row.
+    el.removeClass("setting-item");
     new Setting(el).setName(l.title).setHeading();
     new Setting(el).setName(l.state).setDesc(this.plugin.status);
     new Setting(el).setName(l.backend).addDropdown(d => {
