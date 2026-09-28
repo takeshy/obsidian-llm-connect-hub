@@ -70,7 +70,9 @@ export default class ConnectHubPlugin extends Plugin {
         this.discord.start();
       }
       if (this.settings.kakeratta.enabled && this.settings.kakeratta.url) {
-        this.kakeratta = new KakerattaService(structuredClone(this.settings.kakeratta), backend, status => { this.status = status; });
+        this.kakeratta = new KakerattaService(structuredClone(this.settings.kakeratta), backend, status => {
+          this.status = status;
+        }, () => this.app.vault.getRoot().children.map(child => child.path));
         this.kakeratta.start();
       }
     };

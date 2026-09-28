@@ -12,7 +12,7 @@ export function defaults(): ConnectSettings {
   return {
     backendId: "llm-hub", migration: "new", credentialStorage: "secretStorage",
     discord: { enabled: false, botToken: "", respondToDMs: true, requireMention: true, allowedChannelIds: "", allowedUserIds: "", model: "", systemPrompt: "", maxResponseLength: 2000 },
-    kakeratta: { enabled: false, model: "", url: "", headers: {}, personas: {} },
+    kakeratta: { enabled: false, pollEnabled: true, model: "", url: "", headers: {}, personas: {} },
   };
 }
 const SECRET = "llm-connect-hub-credentials";

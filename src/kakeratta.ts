@@ -1,6 +1,6 @@
 import { McpHttpClient } from "obsidian-llm-hub-common/mcp";
 import type { ConnectBackend, KakerattaSettings, PersonaProfile } from "./contract";
-import { pollKakeratta } from "./kakerattaWorker";
+import { pollKakeratta, type PollResult } from "./kakerattaWorker";
 
 export async function withKakeratta<T>(config: KakerattaSettings, work: (call: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>) => Promise<T>): Promise<T> {
   const url = new URL(config.url);
@@ -23,17 +23,34 @@ export async function withKakeratta<T>(config: KakerattaSettings, work: (call: (
 
 export function resolvePersonaProfile(config: KakerattaSettings, context: unknown): PersonaProfile {
   const id = (context as { persona?: { id?: unknown } })?.persona?.id;
-  const profile = typeof id === "string" && Object.hasOwn(config.personas, id) ? config.personas[id] : undefined;
-  return { model: profile?.model || config.model, vaultFolders: profile?.vaultFolders ?? [], ragSetting: profile?.ragSetting ?? null, skillPaths: profile?.skillPaths ?? [] };
+  const profile = (typeof id === "string" && Object.hasOwn(config.personas, id) ? config.personas[id] : undefined) ?? config.defaultProfile;
+  return { model: profile?.model || (config.defaultProfile?.model ?? config.model), vaultFolders: profile?.vaultFolders ?? [], ragSetting: profile?.ragSetting ?? null, skillPaths: profile?.skillPaths ?? [], ...(profile?.allVault ? { allVault: true } : {}) };
+}
+
+/** Expand at answer time so newly created root notes and folders are included. */
+export function resolveVaultFolders(profile: PersonaProfile, rootPaths: () => string[]): string[] {
+  return profile.allVault ? rootPaths() : profile.vaultFolders;
+}
+
+/** The status line reports the outcome of the last completed poll. */
+export function pollStatus(summary: PollResult): string {
+  const failed = summary.errors.length;
+  return failed ? `Kakeratta: connected; ${failed} ask${failed === 1 ? "" : "s"} failed` : "Kakeratta: connected";
 }
 
 export class KakerattaService {
   private controller = new AbortController();
   private timer?: number;
   private running?: Promise<void>;
-  constructor(private config: KakerattaSettings, private backend: ConnectBackend, private status: (message: string) => void) {}
+  private lastStatus?: string;
+  constructor(private config: KakerattaSettings, private backend: ConnectBackend, private status: (message: string) => void, private rootPaths: () => string[]) {}
+  private reportStatus(message: string): void {
+    if (message === this.lastStatus) return;
+    this.lastStatus = message;
+    this.status(message);
+  }
   start(): void {
-    this.timer = window.setInterval(() => this.tick(), 60_000);
+    if (this.config.pollEnabled !== false) this.timer = window.setInterval(() => this.tick(), 60_000);
     this.tick();
   }
   stop(): void {
@@ -44,23 +61,25 @@ export class KakerattaService {
   private tick(): void {
     if (this.running || this.controller.signal.aborted) return;
     this.running = withKakeratta(this.config, async call => {
-      await pollKakeratta(call, async (messages, systemPrompt, signal, context) => {
+      const summary = await pollKakeratta(call, async (messages, systemPrompt, signal, context) => {
         const profile = resolvePersonaProfile(this.config, context);
         const selectedModel = profile.model || this.backend.getDefaultModel();
         if ((["antigravity-cli", "claude-cli", "codex-cli"].includes(selectedModel) || selectedModel.startsWith("local-llm:")) &&
-            profile.vaultFolders.length === 0 && !profile.ragSetting && profile.skillPaths.length === 0) {
+            !profile.allVault && profile.vaultFolders.length === 0 && !profile.ragSetting && profile.skillPaths.length === 0) {
           return this.backend.generateText({ model: selectedModel, messages, systemPrompt, signal });
         }
         const result = await this.backend.generate({
           conversation: { messages, lastActivity: Date.now(), model: selectedModel, ragSetting: profile.ragSetting, webSearch: false, activeSkillPaths: profile.skillPaths },
-          model: selectedModel, systemPrompt, signal, vaultFolders: profile.vaultFolders,
+          model: selectedModel, systemPrompt, signal, vaultFolders: resolveVaultFolders(profile, this.rootPaths),
           ragQuery: (context as { trigger?: { text?: string } })?.trigger?.text ?? "",
         });
         return result.answer.content;
       }, this.controller.signal);
-      if (!this.controller.signal.aborted) this.status("Kakeratta: connected");
+      if (!this.controller.signal.aborted) this.reportStatus(pollStatus(summary));
     }).catch(() => {
-      if (!this.controller.signal.aborted) this.status("Kakeratta: connection failed; retrying in one minute");
+      if (!this.controller.signal.aborted) {
+        this.reportStatus(this.config.pollEnabled === false ? "Kakeratta: connection failed" : "Kakeratta: connection failed; retrying in one minute");
+      }
     }).finally(() => { this.running = undefined; });
   }
 }

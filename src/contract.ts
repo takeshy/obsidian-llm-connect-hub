@@ -44,15 +44,19 @@ export interface DiscordSettings {
 export interface PersonaProfile {
   model: string;
   vaultFolders: string[];
+  allVault?: boolean;
   ragSetting: string | null;
   skillPaths: string[];
 }
 export interface KakerattaSettings {
   enabled: boolean;
+  /** Defaults to true for settings saved before this option existed. */
+  pollEnabled?: boolean;
   model: string;
   url: string;
   headers: Record<string, string>;
   personas: Record<string, PersonaProfile>;
+  defaultProfile?: PersonaProfile;
 }
 export interface LegacyConnections {
   discord: DiscordSettings;

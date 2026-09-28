@@ -180,7 +180,7 @@ export class DiscordService {
       }
       if (code === 4014) {
         console.error("LLM Connect Hub: Discord: Disallowed intents - enable MESSAGE_CONTENT intent in Discord Developer Portal");
-        new Notice("Discord: Enable MESSAGE_CONTENT intent in Developer Portal");
+        new Notice("Discord: Enable message content intent in the developer portal");
         this.shouldReconnect = false;
         return;
       }

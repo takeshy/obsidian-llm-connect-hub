@@ -26,6 +26,16 @@ describe("connection settings and migration", () => {
     expect(JSON.stringify(saved)).not.toMatch(/discord-secret|kakeratta-secret/);
     expect(loadSettings(app, saved)).toEqual(settings);
   });
+  it("round-trips default and persona profiles without exposing header values", () => {
+    const { app } = appWithSecret();
+    const settings = defaults();
+    settings.kakeratta.headers = { Authorization: "Bearer secret", "X-Account": "001" };
+    settings.kakeratta.defaultProfile = { model: "api:default", vaultFolders: [], allVault: true, ragSetting: "research", skillPaths: ["skills/review"] };
+    settings.kakeratta.personas.one = { model: "api:other", vaultFolders: ["Limited"], ragSetting: null, skillPaths: [] };
+    const saved = settingsForSave(app, settings);
+    expect(saved.kakeratta.headers).toEqual({});
+    expect(loadSettings(app, saved)).toEqual(settings);
+  });
   it("never retires the old connection before the new settings are durable", async () => {
     const settings = defaults();
     const legacy = { discord: { ...settings.discord, enabled: true, botToken: "token" }, kakeratta: { ...settings.kakeratta }, credentialStorage: "plaintext" as const };
