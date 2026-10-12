@@ -4,6 +4,7 @@ import { DiscordService } from "./discord";
 import { KakerattaService } from "./kakeratta";
 import { defaults, loadSettings, settingsForSave, migrateConnections, type ConnectSettings } from "./settings";
 import { ConnectSettingsTab } from "./settingsTab";
+import { persistentRequestStore, requestScope } from "./kakerattaRequestStore";
 
 interface WorkspaceEvents {
   on(name: string, callback: (backend: ConnectBackend) => void): EventRef;
@@ -57,7 +58,7 @@ export default class ConnectHubPlugin extends Plugin {
     const run = async () => {
       this.discord?.stop();
       this.discord = undefined;
-      this.kakeratta?.stop();
+      await this.kakeratta?.stop();
       this.kakeratta = undefined;
       if (this.stopped) return;
       const backend = this.backend;
@@ -70,9 +71,14 @@ export default class ConnectHubPlugin extends Plugin {
         this.discord.start();
       }
       if (this.settings.kakeratta.enabled && this.settings.kakeratta.url) {
-        this.kakeratta = new KakerattaService(structuredClone(this.settings.kakeratta), backend, status => {
+        const config = structuredClone(this.settings.kakeratta);
+        const scope = await requestScope(config.url, config.headers);
+        if (this.stopped || this.backend !== backend) return;
+        const directory = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+        const store = persistentRequestStore(this.app.vault.adapter, `${directory}/kakeratta-requests-${scope}`);
+        this.kakeratta = new KakerattaService(config, backend, status => {
           this.status = status;
-        }, () => this.app.vault.getRoot().children.map(child => child.path));
+        }, () => this.app.vault.getRoot().children.map(child => child.path), store);
         this.kakeratta.start();
       }
     };

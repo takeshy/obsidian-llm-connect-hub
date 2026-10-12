@@ -51,6 +51,9 @@ jobs:
       - name: Install dependencies
         if: steps.existing.outputs.exists == 'false'
         run: npm ci
+      - name: Lint
+        if: steps.existing.outputs.exists == 'false'
+        run: npm run lint
       - name: Test
         if: steps.existing.outputs.exists == 'false'
         run: npm test

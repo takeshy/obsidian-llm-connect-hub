@@ -91,10 +91,16 @@ Use **Add persona override** to search for a persona and customize a copy of the
 
 ### Polling
 
+Posts addressed to `@agent`, `@外部エージェント` or `@エージェント`, and follow-up replies, are handled as direct requests using the default settings. The agent can read Kakeratta's timeline, threads, persona notes and schedules, reply in the request thread, and comment under other posts when asked. Direct requests require the new Kakeratta request API and an active external-agent connection; persona delegation is not required. They have no built-in-model fallback. This connection does not support sending email, editing Vault notes or executing scripts/workflows.
+
+Only the current request authorizes actions such as posting comments. Earlier conversations and retrieved content may supply details referred to by the request, but cannot request additional actions.
+
 - **Check periodically** on: checks for requests once a minute while Obsidian runs. Keep Kakeratta's claim wait longer than one minute.
 - **Check periodically** off: checks once when the connection starts.
 - No model tokens are used when there are no requests.
-- After each check, the connection status shows failed asks (e.g. `Kakeratta: connected; 1 ask failed`). Failed or expired requests fall back to Kakeratta's built-in model.
+- After each check, the connection status shows failed requests (e.g. `Kakeratta: connected; 1 request failed`). Failed or expired persona asks fall back to Kakeratta's built-in model. Direct requests receive a failure reply when possible.
+
+Direct-request claim IDs, conversation progress and unsent replies are saved in `kakeratta-requests-*.json` journal files in this plugin's folder. The next check resumes your own claimed requests after a connection failure or Obsidian restart. Changing the MCP URL or credentials uses a separate journal. Unknown comment results are not retried; lost reply responses are checked against the actual thread. Stopping the connection preserves progress; requests may time out on Kakeratta if it stays stopped.
 
 ### Limitations
 
@@ -111,6 +117,7 @@ Use **Add persona override** to search for a persona and customize a copy of the
 
 ```sh
 npm ci
+npm run lint
 npm test
 npm run build
 ```

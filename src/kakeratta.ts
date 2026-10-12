@@ -1,6 +1,7 @@
 import { McpHttpClient } from "obsidian-llm-hub-common/mcp";
 import type { ConnectBackend, KakerattaSettings, PersonaProfile } from "./contract";
-import { pollKakeratta, type PollResult } from "./kakerattaWorker";
+import { KakerattaRejectedError, pollKakeratta, type PollResult } from "./kakerattaWorker";
+import { memoryRequestStore, type RequestStore } from "./kakerattaRequestStore";
 
 export async function withKakeratta<T>(config: KakerattaSettings, work: (call: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>) => Promise<T>): Promise<T> {
   const url = new URL(config.url);
@@ -12,9 +13,11 @@ export async function withKakeratta<T>(config: KakerattaSettings, work: (call: (
     await client.initialize();
     return await work(async (name, args) => {
       // Enabling this dedicated connection authorizes exactly this protocol.
-      if (!["list_personas", "list_asks", "claim_ask", "read_for_ask", "submit_answer", "release_ask"].includes(name)) throw new Error("Unsupported tool");
+      if (!["list_personas", "list_asks", "claim_ask", "read_for_ask", "submit_answer", "release_ask",
+        "claim_request", "reply_request", "comment_on_entry", "get_timeline", "get_thread",
+        "search_timeline", "list_schedules", "list_notes", "read_note"].includes(name)) throw new Error("Unsupported tool");
       const result = await client.callToolRaw(name, args, true);
-      if (result.isError) throw new Error("Kakeratta rejected the request");
+      if (result.isError) throw new KakerattaRejectedError("Kakeratta rejected the request");
       if (result.structuredContent) return result.structuredContent;
       return JSON.parse(result.content.filter(c => c.type === "text").map(c => c.text ?? "").join("\n")) as Record<string, unknown>;
     });
@@ -43,7 +46,7 @@ export function resolveVaultFolders(profile: PersonaProfile, rootPaths: () => st
 /** The status line reports the outcome of the last completed poll. */
 export function pollStatus(summary: PollResult): string {
   const failed = summary.errors.length;
-  return failed ? `Kakeratta: connected; ${failed} ask${failed === 1 ? "" : "s"} failed` : "Kakeratta: connected";
+  return failed ? `Kakeratta: connected; ${failed} request${failed === 1 ? "" : "s"} failed` : "Kakeratta: connected";
 }
 
 export class KakerattaService {
@@ -51,7 +54,7 @@ export class KakerattaService {
   private timer?: number;
   private running?: Promise<void>;
   private lastStatus?: string;
-  constructor(private config: KakerattaSettings, private backend: ConnectBackend, private status: (message: string) => void, private rootPaths: () => string[]) {}
+  constructor(private config: KakerattaSettings, private backend: ConnectBackend, private status: (message: string) => void, private rootPaths: () => string[], private store: RequestStore = memoryRequestStore()) {}
   private reportStatus(message: string): void {
     if (message === this.lastStatus) return;
     this.lastStatus = message;
@@ -61,10 +64,11 @@ export class KakerattaService {
     if (this.config.pollEnabled !== false) this.timer = window.setInterval(() => this.tick(), 60_000);
     this.tick();
   }
-  stop(): void {
+  stop(): Promise<void> {
     this.controller.abort();
     if (this.timer !== undefined) window.clearInterval(this.timer);
     // In-flight HTTP may not be cancellable; the aborted signal prevents further turns.
+    return this.running ?? Promise.resolve();
   }
   private tick(): void {
     if (this.running || this.controller.signal.aborted) return;
@@ -83,7 +87,7 @@ export class KakerattaService {
           ragQuery: (context as { trigger?: { text?: string } })?.trigger?.text ?? "",
         });
         return result.answer.content;
-      }, this.controller.signal);
+      }, this.controller.signal, this.store);
       if (!this.controller.signal.aborted) this.reportStatus(pollStatus(summary));
     }).catch(() => {
       if (!this.controller.signal.aborted) {

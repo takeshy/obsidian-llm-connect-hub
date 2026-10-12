@@ -28,8 +28,8 @@ describe("persona settings", () => {
   it("summarizes failed asks from the last poll in the status line", () => {
     expect(pollStatus({ pending: 0, submitted: 0, unsubmitted: 0, errors: [] })).toBe("Kakeratta: connected");
     expect(pollStatus({ pending: 1, submitted: 1, unsubmitted: 0, errors: [] })).toBe("Kakeratta: connected");
-    expect(pollStatus({ pending: 2, submitted: 1, unsubmitted: 0, errors: [new Error("provider failed")] })).toBe("Kakeratta: connected; 1 ask failed");
-    expect(pollStatus({ pending: 2, submitted: 0, unsubmitted: 1, errors: [new Error("provider failed"), new Error("submit unavailable")] })).toBe("Kakeratta: connected; 2 asks failed");
+    expect(pollStatus({ pending: 2, submitted: 1, unsubmitted: 0, errors: [new Error("provider failed")] })).toBe("Kakeratta: connected; 1 request failed");
+    expect(pollStatus({ pending: 2, submitted: 0, unsubmitted: 1, errors: [new Error("provider failed"), new Error("submit unavailable")] })).toBe("Kakeratta: connected; 2 requests failed");
   });
   it("uses defaults for unknown personas and restores them when an override is removed", () => {
     const config = defaults().kakeratta;

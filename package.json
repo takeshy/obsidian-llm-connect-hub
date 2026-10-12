@@ -1,20 +1,26 @@
 {
   "name": "obsidian-llm-connect-hub",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Discord and Kakeratta connections for Obsidian LLM Hub",
   "main": "main.js",
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "author": "takeshy",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/json": "^0.14.0",
     "@types/node": "^20.0.0",
-    "typescript": "^5.9.3",
     "esbuild": "^0.28.1",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2",
     "obsidian": "^1.13.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1",
     "vitest": "^4.0.18"
   },
   "dependencies": {
